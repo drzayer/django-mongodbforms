@@ -41,7 +41,19 @@ def _get_unique_filename(name, db_alias=DEFAULT_CONNECTION_NAME,
         # file_ext includes the dot.
         name = os.path.join("%s_%s%s" % (file_root, next(count), file_ext))
     return name
+
+def _file_exist(md5, db_alias=DEFAULT_CONNECTION_NAME,
+                         collection_name='fs'):
+    fs = GridFS(get_db(db_alias), collection_name)
+    return fs.exists(md5=md5)
     
+
+def _is_horphan_file(grid_id):
+    from storage.models import Object
+    if Object.objects(file=grid_id).count() > 1:
+        return False
+    return True
+
 
 def _save_iterator_file(field, instance, uploaded_file, file_data=None):
     """
@@ -137,15 +149,26 @@ def construct_instance(form, instance, fields=None, exclude=None):
                 continue
             
             try:
-                upload.file.seek(0)
-                # delete first to get the names right
                 if field.grid_id:
-                    field.delete()
-                filename = _get_unique_filename(upload.name, f.db_alias,
+                    if _is_horphan_file(field.grid_id):
+                        field.delete()
+                    else:
+                        #field.grid_id.new_file()
+                        field.grid_id = None
+
+                upload.file.seek(0)
+
+                import hashlib
+                fich = _file_exists(hashlib.md5(upload.read(), f.db_alias, f.collection_name)
+                if (fich):
+                    field.grid_id = fich
+
+                else:
+                    filename = _get_unique_filename(upload.name, f.db_alias,
                                                 f.collection_name)
-                field.put(upload, content_type=upload.content_type,
+                    field.put(upload, content_type=upload.content_type,
                           filename=filename)
-                setattr(instance, f.name, field)
+                    setattr(instance, f.name, field)
             except AttributeError:
                 # file was already uploaded and not changed during edit.
                 # upload is already the gridfsproxy object we need.
