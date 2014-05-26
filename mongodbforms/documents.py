@@ -164,26 +164,33 @@ def construct_instance(form, instance, fields=None, exclude=None, ignore=None):
                 # delete first to get the names right
                 #if field.grid_id:
                 #    field.delete()
-                
-                if field.grid_id:
-                    print "anterior grid_id %s" % field.grid_id
-                    from mongoengine.fields import GridFSProxy
-                    field = GridFSProxy()
+                from mongoengine.fields import GridFSProxy, ImageGridFsProxy
+                if type(field) == type(GridFSProxy()):
+                    print "fichero"
+                    if field.grid_id:
+                        field = GridFSProxy()
 
+                    import hashlib
+                    try:
+                        grid_id = _get_grid_id(hashlib.md5(upload.file.read()).hexdigest(), f.db_alias, f.collection_name)
+                    except Exception, e:
+                        print "Error: %s" % e
 
-                import hashlib
-                try:
-                    grid_id = _get_grid_id(hashlib.md5(upload.file.read()).hexdigest(), f.db_alias, f.collection_name)
-                except Exception, e:
-                    print "Error: %s" % e
+                    if grid_id == None:
+                        upload.file.seek(0)
+                        filename = _get_unique_filename(upload.name, f.db_alias, f.collection_name)
+                        field.put(upload, content_type=upload.content_type, filename=filename)
+                    else:
+                        field.grid_id = grid_id._id
 
-                if grid_id == None:
-                    upload.file.seek(0)
+                elif type(field) == type(ImageGridFsProxy()):
+                    print "imagen"
+                    if field.grid_id:
+                        field.delete()
+
                     filename = _get_unique_filename(upload.name, f.db_alias, f.collection_name)
                     field.put(upload, content_type=upload.content_type, filename=filename)
-                else:
-                    field.grid_id = grid_id._id
-
+                
                 setattr(instance, f.name, field)
             except AttributeError:
                 # file was already uploaded and not changed during edit.
