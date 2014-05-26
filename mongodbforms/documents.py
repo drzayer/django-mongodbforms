@@ -36,6 +36,13 @@ def _get_unique_filename(name, db_alias=DEFAULT_CONNECTION_NAME, collection_name
         name = os.path.join("%s_%s%s" % (file_root, next(count), file_ext))
     return name
 
+def _get_grid_id(md5, db_alias=DEFAULT_CONNECTION_NAME, collection_name='fs'):
+    fs = GridFS(get_db(db_alias), collection_name)
+    try:
+        return fs.find({"md5": md5})[0]
+    except Exception, e:
+        return None
+
 # The awesome Mongoengine ImageGridFsProxy wants to pull a field
 # from a document to get necessary data. Trouble is that this doesn't work
 # if the ImageField is stored on List or MapField. So we pass a nice fake
@@ -149,8 +156,7 @@ def construct_instance(form, instance, fields=None, exclude=None, ignore=None):
             upload = cleaned_data[f.name]
             if upload is None:
                 continue
-            print type(field)
-            print field
+            
             try:
                 print "el tipo en field es %s" % type(field)
                 
@@ -158,18 +164,26 @@ def construct_instance(form, instance, fields=None, exclude=None, ignore=None):
                 # delete first to get the names right
                 #if field.grid_id:
                 #    field.delete()
+                
                 if field.grid_id:
+                    print "anterior grid_id %s" % field.grid_id
                     from mongoengine.fields import GridFSProxy
                     field = GridFSProxy()
-                    print "el tipo de grid_id es %s" % field.grid_id
-                    #field.grid_id = None
+
+
+                import hashlib
+                try:
+                    grid_id = _get_grid_id(hashlib.md5(upload.file.read()).hexdigest(), f.db_alias, f.collection_name)
+                except Exception, e:
+                    print "Error: %s" % e
+
+                if grid_id == None:
+                    upload.file.seek(0)
+                    filename = _get_unique_filename(upload.name, f.db_alias, f.collection_name)
+                    field.put(upload, content_type=upload.content_type, filename=filename)
                 else:
-                    try:
-                        print "el tipo de grid_id es %s" % field.grid_id
-                    except:
-                        pass
-                filename = _get_unique_filename(upload.name, f.db_alias, f.collection_name)
-                field.put(upload, content_type=upload.content_type, filename=filename)
+                    field.grid_id = grid_id._id
+
                 setattr(instance, f.name, field)
             except AttributeError:
                 # file was already uploaded and not changed during edit.
